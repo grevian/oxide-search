@@ -1,3 +1,4 @@
 ./data/*
-./opensearch/logs
+search/logs
 .idea
+./logs

@@ -14,7 +14,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"oxide-search/embedding"
-	"oxide-search/meta"
+	"oxide-search/manifest"
 )
 
 const (
@@ -22,12 +22,12 @@ const (
 )
 
 type searchDocument struct {
-	meta.EpisodeData
+	manifest.EpisodeData
 	Vectors []float32 `json:"vector_data"`
 }
 
 func Index(ctx *cli.Context) error {
-	manifest, err := meta.LoadManifest()
+	manifestData, err := manifest.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load data manifest: %w", err)
 	}
@@ -43,7 +43,7 @@ func Index(ctx *cli.Context) error {
 
 	// For each episode, load the embeddings and index them into opensearch in a document that includes their
 	// text content and some episode information
-	for _, episode := range manifest.Episodes {
+	for _, episode := range manifestData.Episodes {
 		embeddingBytes, err := os.ReadFile(filepath.Join(dataDirectory, fmt.Sprintf("%s.embeddings.json", episode.GUID)))
 		if err != nil {
 			return fmt.Errorf("could not load episode embeddings: %w", err)

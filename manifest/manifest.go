@@ -1,4 +1,4 @@
-package meta
+package manifest
 
 import (
 	"encoding/json"
@@ -23,13 +23,13 @@ type EpisodeData struct {
 	Transcript  string
 }
 
-type DownloadManifest struct {
+type Downloads struct {
 	LastUpdated string
 	Episodes    map[string]EpisodeData
 }
 
-func LoadManifest() (*DownloadManifest, error) {
-	var manifest DownloadManifest
+func Load() (*Downloads, error) {
+	var manifest Downloads
 	manifestBytes, err := os.ReadFile(filepath.Join(dataDirectory, manifestName))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("unexpected error reading download manifest: %w", err)
@@ -48,7 +48,7 @@ func LoadManifest() (*DownloadManifest, error) {
 	return &manifest, nil
 }
 
-func UpdateManifest(manifest *DownloadManifest) error {
+func Update(manifest *Downloads) error {
 	manifestBytes, err := json.MarshalIndent(manifest, "", " ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal manifest for updating: %w", err)

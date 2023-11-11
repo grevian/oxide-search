@@ -9,10 +9,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"oxide-search/meta"
-
 	"github.com/mmcdole/gofeed"
 	"github.com/urfave/cli/v2"
+	"oxide-search/manifest"
 )
 
 const (
@@ -24,7 +23,7 @@ func Download(ctx *cli.Context) error {
 	// TODO allow an argument to force rebuild, or to incrementally build data
 
 	// Load our data manifest if it exists, if it doesn't we'll create a new one
-	manifest, err := meta.LoadManifest()
+	manifestData, err := manifest.Load()
 	if err != nil {
 		return fmt.Errorf("unexpected error reading download manifest: %w", err)
 	}
@@ -36,13 +35,13 @@ func Download(ctx *cli.Context) error {
 		return fmt.Errorf("failed to process RSS from %s: %w", oxideRSSFeed, err)
 	}
 
-	manifest.LastUpdated = feed.Updated
+	manifestData.LastUpdated = feed.Updated
 
 	// Download a few episodes from the RSS feed, and grab their description, link, and GUID too
-	const maxEpisodes = 3
+	const maxEpisodes = 10
 	var processedEpisodes = 0
 	for _, item := range feed.Items {
-		if _, exists := manifest.Episodes[item.GUID]; exists {
+		if _, exists := manifestData.Episodes[item.GUID]; exists {
 			fmt.Printf("skipping existing item %s\n", item.GUID)
 			continue
 		}
@@ -87,7 +86,7 @@ func Download(ctx *cli.Context) error {
 			return fmt.Errorf("downloaded file was not the expected length: expected %d and got %d bytes", expectedLength, written)
 		}
 		_ = resp.Body.Close()
-		manifest.Episodes[item.GUID] = meta.EpisodeData{
+		manifestData.Episodes[item.GUID] = manifest.EpisodeData{
 			Title:       item.Title,
 			Description: item.Description,
 			Link:        item.Link,
@@ -98,7 +97,7 @@ func Download(ctx *cli.Context) error {
 		time.Sleep(time.Millisecond * 2000) // Be nice to transistor.fm
 	}
 
-	err = meta.UpdateManifest(manifest)
+	err = manifest.Update(manifestData)
 	if err != nil {
 		return fmt.Errorf("failed to write updated manifest: %w", err)
 	}

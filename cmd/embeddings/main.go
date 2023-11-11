@@ -12,7 +12,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"oxide-search/embedding"
-	"oxide-search/meta"
+	"oxide-search/manifest"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 )
 
 func Embed(ctx *cli.Context) error {
-	manifest, err := meta.LoadManifest()
+	manifestData, err := manifest.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load data manifest: %w", err)
 	}
@@ -31,7 +31,7 @@ func Embed(ctx *cli.Context) error {
 	// Split the transcripts up into 500~ word chunks and submit them to openai to create embeddings, which we
 	// then store alongside the files
 	openaiClient := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
-	for _, episode := range manifest.Episodes {
+	for _, episode := range manifestData.Episodes {
 		if _, err := os.Stat(filepath.Join(dataDirectory, fmt.Sprintf("%s.embeddings.json", episode.GUID))); !errors.Is(err, os.ErrNotExist) {
 			fmt.Println("embeddings file already exists, skipping recreation")
 			continue

@@ -10,7 +10,7 @@ import (
 	"github.com/sashabaranov/go-openai"
 	"github.com/urfave/cli/v2"
 
-	"oxide-search/meta"
+	"oxide-search/manifest"
 )
 
 const (
@@ -34,7 +34,7 @@ func gatherChunks(GUID string) ([]string, error) {
 }
 
 // chunkFiles splits files into small enough pieces to be transcribed by Whisper, if necessary
-func chunkFiles(episode *meta.EpisodeData) ([]string, error) {
+func chunkFiles(episode *manifest.EpisodeData) ([]string, error) {
 	var transcriptionFiles []string
 
 	fileInfo, err := os.Stat(filepath.Join(dataDirectory, episode.Filename))
@@ -73,12 +73,12 @@ func chunkFiles(episode *meta.EpisodeData) ([]string, error) {
 }
 
 func Transcribe(ctx *cli.Context) error {
-	manifest, err := meta.LoadManifest()
+	manifestData, err := manifest.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load manifest: %w", err)
 	}
 
-	for _, episode := range manifest.Episodes {
+	for _, episode := range manifestData.Episodes {
 		if episode.Transcript != "" {
 			fmt.Printf("transcription already exists for episode %s (%s), skipping transcription\n", episode.GUID, episode.Title)
 			continue
@@ -108,10 +108,10 @@ func Transcribe(ctx *cli.Context) error {
 			transcript.WriteString(" ")
 		}
 		episode.Transcript = transcript.String()
-		manifest.Episodes[episode.GUID] = episode
+		manifestData.Episodes[episode.GUID] = episode
 
 		// Write the transcriptions out to the manifest after each episode is transcribed
-		err = meta.UpdateManifest(manifest)
+		err = manifest.Update(manifestData)
 		if err != nil {
 			return fmt.Errorf("failed to update manifest with transcriptions: %w", err)
 		}
