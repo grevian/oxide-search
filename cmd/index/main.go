@@ -5,12 +5,12 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/opensearch-project/opensearch-go/opensearchapi"
 	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/opensearch-project/opensearch-go"
+	"github.com/opensearch-project/opensearch-go/opensearchapi"
 	"github.com/urfave/cli/v2"
 
 	"oxide-search/embedding"
@@ -41,6 +41,8 @@ func Index(ctx *cli.Context) error {
 		Password:  "admin",
 	})
 
+	// For each episode, load the embeddings and index them into opensearch in a document that includes their
+	// text content and some episode information
 	for _, episode := range manifest.Episodes {
 		embeddingBytes, err := os.ReadFile(filepath.Join(dataDirectory, fmt.Sprintf("%s.embeddings.json", episode.GUID)))
 		if err != nil {
@@ -84,7 +86,6 @@ func Index(ctx *cli.Context) error {
 		}
 
 		fmt.Printf("Indexed %d embedding documents for %s (%s)\n", len(embeddings), episode.GUID, episode.Title)
-
 	}
 
 	return nil

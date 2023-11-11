@@ -23,12 +23,13 @@ const (
 func Download(ctx *cli.Context) error {
 	// TODO allow an argument to force rebuild, or to incrementally build data
 
-	// TODO move loaders/updating into the manifest package
+	// Load our data manifest if it exists, if it doesn't we'll create a new one
 	manifest, err := meta.LoadManifest()
 	if err != nil {
 		return fmt.Errorf("unexpected error reading download manifest: %w", err)
 	}
 
+	// Access the oxide and friends podcast RSS from transistor.fm
 	fp := gofeed.NewParser()
 	feed, err := fp.ParseURL(oxideRSSFeed)
 	if err != nil {
@@ -37,6 +38,7 @@ func Download(ctx *cli.Context) error {
 
 	manifest.LastUpdated = feed.Updated
 
+	// Download a few episodes from the RSS feed, and grab their description, link, and GUID too
 	const maxEpisodes = 3
 	var processedEpisodes = 0
 	for _, item := range feed.Items {

@@ -2,13 +2,14 @@ package transcribe
 
 import (
 	"fmt"
-	"github.com/sashabaranov/go-openai"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/sashabaranov/go-openai"
 	"github.com/urfave/cli/v2"
+
 	"oxide-search/meta"
 )
 
@@ -54,7 +55,9 @@ func chunkFiles(episode *meta.EpisodeData) ([]string, error) {
 		}
 
 		fmt.Printf("File is %d MB, files over 25MB will need to be chunked\n", filesizeMB)
-		fmt.Printf("Splitting into 20 minute chunks \n")
+
+		// Splitting to an exact size is pretty tricky with MP3s, so split into 20 minute chunks, this works out
+		// to 18mb~ files which seems good enough
 		cmd := exec.Command("ffmpeg", "-i", filepath.Join(dataDirectory, episode.Filename), "-f", "segment", "-segment_time", "1200", "-c", "copy", filepath.Join(dataDirectory, fmt.Sprintf("%s-chunked", episode.GUID)+"-%02d.mp3"))
 		output, err := cmd.CombinedOutput()
 		if err != nil {
@@ -87,13 +90,14 @@ func Transcribe(ctx *cli.Context) error {
 		}
 		fmt.Printf("transcribing the following files: %s \n", strings.Join(transcriptionFiles, ", "))
 
+		// Submit each individual file to OpenAI for transcription, then combine the results into a single string
 		openaiClient := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
-
 		var transcript strings.Builder
 		for _, file := range transcriptionFiles {
 			response, err := openaiClient.CreateTranscription(ctx.Context, openai.AudioRequest{
 				Model:    openai.Whisper1,
 				FilePath: filepath.Join(dataDirectory, file),
+				// Might be able to improve the transcriptions with either a static prompt, or maybe one based on the description or show notes
 				Prompt:   "",
 				Language: "en",
 			})
@@ -105,11 +109,12 @@ func Transcribe(ctx *cli.Context) error {
 		}
 		episode.Transcript = transcript.String()
 		manifest.Episodes[episode.GUID] = episode
-	}
 
-	err = meta.UpdateManifest(manifest)
-	if err != nil {
-		return fmt.Errorf("failed to update manifest with transcriptions: %w", err)
+		// Write the transcriptions out to the manifest after each episode is transcribed
+		err = meta.UpdateManifest(manifest)
+		if err != nil {
+			return fmt.Errorf("failed to update manifest with transcriptions: %w", err)
+		}
 	}
 
 	return nil

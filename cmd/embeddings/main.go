@@ -17,7 +17,9 @@ import (
 
 const (
 	dataDirectory = "data"
-	vectorSize    = 500
+
+	// Definitely worth experimenting with this
+	vectorSize = 500
 )
 
 func Embed(ctx *cli.Context) error {
@@ -26,8 +28,9 @@ func Embed(ctx *cli.Context) error {
 		return fmt.Errorf("failed to load data manifest: %w", err)
 	}
 
+	// Split the transcripts up into 500~ word chunks and submit them to openai to create embeddings, which we
+	// then store alongside the files
 	openaiClient := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
-
 	for _, episode := range manifest.Episodes {
 		if _, err := os.Stat(filepath.Join(dataDirectory, fmt.Sprintf("%s.embeddings.json", episode.GUID))); !errors.Is(err, os.ErrNotExist) {
 			fmt.Println("embeddings file already exists, skipping recreation")
@@ -46,7 +49,6 @@ func Embed(ctx *cli.Context) error {
 			embeddingResponse, err := openaiClient.CreateEmbeddings(ctx.Context, openai.EmbeddingRequestStrings{
 				Input: []string{strings.Join(stringBatch, " ")},
 				Model: openai.AdaEmbeddingV2,
-				User:  "josh-hayes-sheen",
 			})
 			if err != nil {
 				e := fmt.Errorf("Error generating embeddings for chunk at indices %d:%d of episode %s: %w\n", index, index+vectorSize, episode.GUID, err)

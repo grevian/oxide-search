@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"oxide-search/meta"
 )
@@ -22,21 +23,20 @@ type searchDocument struct {
 }
 
 func Query(ctx *cli.Context) error {
+	userQuery := "Tell me about fan power consumption in oxide racks"
 
-	userQuery := "Tell me a story about fan power consumption in oxide racks"
-
+	// Get an embedding of the users input query so we can find local context for its content
 	openaiClient := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
-	embeddingResponse, err := openaiClient.CreateEmbeddings(ctx.Context, openai.EmbeddingRequestStrings{
+	queryEmbeddingResponse, err := openaiClient.CreateEmbeddings(ctx.Context, openai.EmbeddingRequestStrings{
 		Input: []string{userQuery},
 		Model: openai.AdaEmbeddingV2,
-		User:  "josh-hayes-sheen",
 	})
 	if err != nil {
 		return fmt.Errorf("failed to generate vectors for query: %w", err)
 	}
+	queryVector := queryEmbeddingResponse.Data[0].Embedding
 
-	queryVector := embeddingResponse.Data[0].Embedding
-
+	// Now search for neighbors of the embedding in our index to build context for the response
 	client, err := opensearch.NewClient(opensearch.Config{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -46,7 +46,8 @@ func Query(ctx *cli.Context) error {
 		Password:  "admin",
 	})
 
-	s := struct {
+	// The opensearch API in go is... very awkward
+	queryBytes, err := json.Marshal(struct {
 		Size  int   `json:"size"`
 		Query query `json:"query"`
 	}{
@@ -59,8 +60,7 @@ func Query(ctx *cli.Context) error {
 				},
 			},
 		},
-	}
-	queryBytes, err := json.Marshal(s)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal vector query: %w", err)
 	}
@@ -97,7 +97,9 @@ func Query(ctx *cli.Context) error {
 		return fmt.Errorf("failed to deserialize search results")
 	}
 
-	basePrompt := "A technical leader is discussing technical and social topics with friends and colleagues"
+	// Now combine our base prompt, the context from our index, and the users query, to create a
+	// chat completion request, which we can then submit to OpenAI to generate a response
+	basePrompt := "You are a technical leader in the open source community, maybe affiliated with Oxide computers, and are discussing technical and social topics with friends and colleagues and answering questions from the audience"
 	contextMessages := []openai.ChatCompletionMessage{
 		{
 			Role:    openai.ChatMessageRoleSystem,
@@ -117,15 +119,18 @@ func Query(ctx *cli.Context) error {
 		Content: userQuery,
 	})
 
+	queryStart := time.Now()
 	chatResponse, err := openaiClient.CreateChatCompletion(ctx.Context, openai.ChatCompletionRequest{
-		Model:       openai.GPT3Dot5Turbo,
+		Model:       openai.GPT4TurboPreview,
 		Messages:    contextMessages,
 		Temperature: 0.6,
+		MaxTokens:   300,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to generate chat completion: %w", err)
 	}
 
+	fmt.Printf("Included Embeddings: %d, took %s seconds to generate a response \n", len(result.Hits.Hits), time.Since(queryStart))
 	fmt.Println("ChatResponse: " + chatResponse.Choices[0].Message.Content)
 
 	return nil
