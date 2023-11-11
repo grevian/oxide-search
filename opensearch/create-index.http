@@ -1,0 +1,24 @@
+### Send POST request with json body
+PUT https://localhost:9200/oxide
+Authorization: Basic admin admin
+Content-Type: application/json
+
+{
+  "settings": {
+    "knn": true,
+    "knn.algo_param.ef_search": 100
+  },
+  "mappings": {
+    "properties": {
+      "vector_data": {
+        "type": "knn_vector",
+        "dimension": 1536,
+        "method": {
+          "name": "hnsw",
+          "space_type": "cosinesimil",
+          "engine": "nmslib"
+        }
+      }
+    }
+  }
+}
