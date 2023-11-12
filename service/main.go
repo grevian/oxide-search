@@ -8,13 +8,14 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"oxide-search/meta"
-	"oxide-search/search"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/opensearch-project/opensearch-go"
 	"github.com/sashabaranov/go-openai"
+
+	"oxide-search/meta"
+	"oxide-search/search"
 )
 
 type QueryPayload struct {
@@ -89,7 +90,15 @@ func (s *server) queryHandler(ctx *gin.Context) {
 		return
 	}
 
-	conversationContext := meta.CreateConversation(meta.GetPrompt(), nearbyEmbeddings, query.UserQuery)
+	additionalEmbeddings, err := search.AddNearbySegments(ctx, s.searchClient, nearbyEmbeddings, 20)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "something went wrong talking to the search index"})
+		s.logger.ErrorContext(ctx, "failed to add additional embeddings from user query", slog.Any("error", err))
+		return
+	}
+
+	contextEmbeddings := append(nearbyEmbeddings, additionalEmbeddings...)
+	conversationContext := meta.CreateConversation(meta.GetPrompt(), contextEmbeddings, query.UserQuery)
 	chatResponse, err := s.openaiClient.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:       openai.GPT4TurboPreview,
 		Messages:    conversationContext,
