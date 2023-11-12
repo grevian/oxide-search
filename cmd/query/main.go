@@ -43,8 +43,14 @@ func Query(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to query nearby vectors: %w", err)
 	}
+	additionalContext, err := search.AddNearbySegments(ctx.Context, client, searchResults, 20)
+	if err != nil {
+		return fmt.Errorf("failed to add additional nearby segments: %w", err)
+	}
 
-	contextMessages := meta.CreateConversation(meta.GetPrompt(), searchResults, userQuery)
+	contextVectors := append(searchResults, additionalContext...)
+
+	contextMessages := meta.CreateConversation(meta.GetPrompt(), contextVectors, userQuery)
 
 	queryStart := time.Now()
 	chatResponse, err := openaiClient.CreateChatCompletion(ctx.Context, openai.ChatCompletionRequest{
@@ -57,7 +63,7 @@ func Query(ctx *cli.Context) error {
 		return fmt.Errorf("failed to generate chat completion: %w", err)
 	}
 
-	fmt.Printf("Included Embeddings: %d, took %s seconds to generate a response \n", len(searchResults), time.Since(queryStart))
+	fmt.Printf("Included Embeddings: %d, took %s seconds to generate a response \n", len(contextVectors), time.Since(queryStart))
 	fmt.Println("ChatResponse: " + chatResponse.Choices[0].Message.Content)
 
 	return nil

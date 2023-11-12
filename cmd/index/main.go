@@ -5,25 +5,22 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/opensearch-project/opensearch-go"
-	"github.com/opensearch-project/opensearch-go/opensearchapi"
-	"github.com/urfave/cli/v2"
 	"net/http"
 	"os"
 	"path/filepath"
 
+	"github.com/opensearch-project/opensearch-go"
+	"github.com/opensearch-project/opensearch-go/opensearchapi"
+	"github.com/urfave/cli/v2"
+
 	"oxide-search/embedding"
 	"oxide-search/manifest"
+	"oxide-search/search"
 )
 
 const (
 	dataDirectory = "data"
 )
-
-type searchDocument struct {
-	manifest.EpisodeData
-	Vectors []float32 `json:"vector_data"`
-}
 
 func Index(ctx *cli.Context) error {
 	manifestData, err := manifest.Load()
@@ -57,12 +54,14 @@ func Index(ctx *cli.Context) error {
 		var bulkRequest bytes.Buffer
 
 		for i, e := range embeddings {
-			var doc searchDocument
+			var doc search.Document
+			doc.Id = fmt.Sprintf("episode-%s-embedding-%d", episode.GUID, i)
 			doc.Title = episode.Title
 			doc.GUID = episode.GUID
 			doc.Published = episode.Published
 			doc.Link = episode.Link
 			doc.Description = episode.Description
+			doc.VectorId = i
 
 			doc.Transcript = e.Content
 			doc.Vectors = e.Vector
@@ -70,7 +69,6 @@ func Index(ctx *cli.Context) error {
 			if err != nil {
 				return fmt.Errorf("failed to build search document for episode %s, embedding %d: %w", episode.GUID, i, err)
 			}
-			//  { "index" : { "_index" : "go-test-index1", "_id" : "2" } }
 			indexRequestBody, err := json.Marshal(
 				struct {
 					Index struct {
