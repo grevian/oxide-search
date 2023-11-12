@@ -5,13 +5,12 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
-
 	"github.com/opensearch-project/opensearch-go"
 	"github.com/opensearch-project/opensearch-go/opensearchapi"
 	"github.com/urfave/cli/v2"
+	"net/http"
+	"os"
+	"path/filepath"
 
 	"oxide-search/embedding"
 	"oxide-search/manifest"
@@ -55,6 +54,8 @@ func Index(ctx *cli.Context) error {
 			return fmt.Errorf("could not load episode embeddings: %w", err)
 		}
 
+		var bulkRequest bytes.Buffer
+
 		for i, e := range embeddings {
 			var doc searchDocument
 			doc.Title = episode.Title
@@ -65,24 +66,45 @@ func Index(ctx *cli.Context) error {
 
 			doc.Transcript = e.Content
 			doc.Vectors = e.Vector
-			docBody, err := json.MarshalIndent(doc, "", " ")
+			docBody, err := json.Marshal(doc)
 			if err != nil {
 				return fmt.Errorf("failed to build search document for episode %s, embedding %d: %w", episode.GUID, i, err)
 			}
-
-			req := opensearchapi.IndexRequest{
-				Index:      "oxide",
-				DocumentID: fmt.Sprintf("episode-%s-embedding-%d", episode.GUID, i),
-				Body:       bytes.NewReader(docBody),
-			}
-
-			insertResponse, err := req.Do(ctx.Context, client)
+			//  { "index" : { "_index" : "go-test-index1", "_id" : "2" } }
+			indexRequestBody, err := json.Marshal(
+				struct {
+					Index struct {
+						IndexName string `json:"_index"`
+						Id        string `json:"_id"`
+					} `json:"index"`
+				}{
+					struct {
+						IndexName string `json:"_index"`
+						Id        string `json:"_id"`
+					}{
+						"oxide",
+						fmt.Sprintf("episode-%s-embedding-%d", episode.GUID, i),
+					},
+				})
 			if err != nil {
-				return fmt.Errorf("error indexing embedding for episode %s, embedding %d: %w", episode.GUID, i, err)
+				return fmt.Errorf("failed to build indexing directive for episode %s, embedding %d: %w", episode.GUID, i, err)
 			}
-			if insertResponse.StatusCode >= 300 {
-				return fmt.Errorf("unexpected indexing response writing embedding for episode %s, embedding %d: %s", episode.GUID, i, insertResponse.String())
-			}
+
+			bulkRequest.WriteString(string(indexRequestBody) + "\n")
+			bulkRequest.WriteString(string(docBody) + "\n")
+		}
+
+		req := opensearchapi.BulkRequest{
+			Index: "oxide",
+			Body:  bytes.NewReader(bulkRequest.Bytes()),
+		}
+
+		insertResponse, err := req.Do(ctx.Context, client)
+		if err != nil {
+			return fmt.Errorf("error indexing embedding for episode %s %w", episode.GUID, err)
+		}
+		if insertResponse.StatusCode >= 300 {
+			return fmt.Errorf("unexpected indexing response writing embeddings for episode %s: %s", episode.GUID, insertResponse.String())
 		}
 
 		fmt.Printf("Indexed %d embedding documents for %s (%s)\n", len(embeddings), episode.GUID, episode.Title)

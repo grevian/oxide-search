@@ -2,7 +2,6 @@ package embeddings
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,10 +31,6 @@ func Embed(ctx *cli.Context) error {
 	// then store alongside the files
 	openaiClient := openai.NewClient(os.Getenv("OPENAI_API_KEY"))
 	for _, episode := range manifestData.Episodes {
-		if _, err := os.Stat(filepath.Join(dataDirectory, fmt.Sprintf("%s.embeddings.json", episode.GUID))); !errors.Is(err, os.ErrNotExist) {
-			fmt.Println("embeddings file already exists, skipping recreation")
-			continue
-		}
 
 		stringField := strings.Fields(episode.Transcript)
 		fmt.Printf("generating vectors for %d batches of %d words at a time from the transcript of %d words\n", len(stringField)/vectorSize, vectorSize, len(episode.Transcript))
@@ -43,11 +38,26 @@ func Embed(ctx *cli.Context) error {
 		index := 0
 		embeddings := make([]embedding.Storage, 0)
 		for index < len(stringField)-vectorSize {
-			stringBatch := stringField[index : index+vectorSize]
+
+			// Take overlapping sets of windows to use as embeddings, for example of our index is 1000 and our window size is 500
+			var batches []string
+			// Take the window on the current index, 1000-1500
+			if index+vectorSize <= len(stringField) {
+				batches = append(batches, strings.Join(stringField[index:index+vectorSize], " "))
+			}
+			// Slide the window forwards and take the terms 1250-1750
+			if index+vectorSize+(vectorSize/2) <= len(stringField) {
+				batches = append(batches, strings.Join(stringField[index+(vectorSize/2):index+vectorSize+(vectorSize/2)], " "))
+			}
+			// Slide the window backwards and take the terms 750-1250
+			if index > vectorSize {
+				batches = append(batches, strings.Join(stringField[index-(vectorSize/2):index+(vectorSize/2)], " "))
+			}
+
 			index += vectorSize
 
 			embeddingResponse, err := openaiClient.CreateEmbeddings(ctx.Context, openai.EmbeddingRequestStrings{
-				Input: []string{strings.Join(stringBatch, " ")},
+				Input: batches,
 				Model: openai.AdaEmbeddingV2,
 			})
 			if err != nil {
@@ -56,13 +66,16 @@ func Embed(ctx *cli.Context) error {
 				continue
 			}
 
-			embeddings = append(embeddings, embedding.Storage{
-				GUID:       episode.GUID,
-				VectorSize: vectorSize,
-				Model:      embeddingResponse.Model.String(),
-				Vector:     embeddingResponse.Data[0].Embedding,
-				Content:    strings.Join(stringBatch, " "),
-			})
+			for i := range embeddingResponse.Data {
+				embeddings = append(embeddings, embedding.Storage{
+					GUID:       episode.GUID,
+					VectorSize: vectorSize,
+					Model:      "text-embedding-ada-002",
+					Vector:     embeddingResponse.Data[i].Embedding,
+					Content:    batches[i],
+				})
+			}
+
 		}
 
 		embeddingBytes, err := json.MarshalIndent(embeddings, "", " ")
