@@ -8,7 +8,7 @@ import (
 	"oxide-search/meta"
 	"time"
 
-	"github.com/opensearch-project/opensearch-go"
+	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/sashabaranov/go-openai"
 	"github.com/urfave/cli/v2"
 

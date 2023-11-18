@@ -11,23 +11,13 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/opensearch-project/opensearch-go"
+	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/sashabaranov/go-openai"
 
 	"oxide-search/meta"
 	"oxide-search/search"
+	"oxide-search/service/query"
 )
-
-type QueryPayload struct {
-	UserQuery string
-}
-
-type QueryResponse struct {
-	UserQuery    string
-	ChatResponse string
-	Sources      []string
-	Embeddings   []string
-}
 
 type server struct {
 	searchClient *opensearch.Client
@@ -66,15 +56,15 @@ func main() {
 }
 
 func (s *server) queryHandler(ctx *gin.Context) {
-	var query QueryPayload
-	if err := ctx.Bind(&query); err != nil {
+	var queryBody query.RequestPayload
+	if err := ctx.Bind(&queryBody); err != nil {
 		s.logger.ErrorContext(ctx, "failed to bind request to expected object", slog.Any("error", err))
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	queryEmbeddingResponse, err := s.openaiClient.CreateEmbeddings(ctx, openai.EmbeddingRequestStrings{
-		Input: []string{query.UserQuery},
+		Input: []string{queryBody.UserQuery},
 		Model: openai.AdaEmbeddingV2,
 	})
 	if err != nil {
@@ -98,7 +88,7 @@ func (s *server) queryHandler(ctx *gin.Context) {
 	}
 
 	contextEmbeddings := append(nearbyEmbeddings, additionalEmbeddings...)
-	conversationContext := meta.CreateConversation(meta.GetPrompt(), contextEmbeddings, query.UserQuery)
+	conversationContext := meta.CreateConversation(meta.GetPrompt(), contextEmbeddings, queryBody.UserQuery)
 	chatResponse, err := s.openaiClient.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:       openai.GPT4TurboPreview,
 		Messages:    conversationContext,
@@ -116,8 +106,8 @@ func (s *server) queryHandler(ctx *gin.Context) {
 		sources[i] = fmt.Sprintf("%s - %s", nearbyEmbeddings[i].EpisodeData.Title, nearbyEmbeddings[i].EpisodeData.Link)
 	}
 
-	response := &QueryResponse{
-		UserQuery:    query.UserQuery,
+	response := &query.ResponseBody{
+		UserQuery:    queryBody.UserQuery,
 		ChatResponse: chatResponse.Choices[0].Message.Content,
 		Sources:      sources,
 		Embeddings:   []string{"Embedding id 31", "Embedding id 64"},

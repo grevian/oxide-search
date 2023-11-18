@@ -1,0 +1,7 @@
+# POST http://localhost:3000/chatQuery
+POST https://zun2y1vmxi.execute-api.ca-central-1.amazonaws.com/Prod/chatQuery
+Content-Type: application/json
+
+{
+  "UserQuery": "Tell me about fan power consumption in oxide racks"
+}

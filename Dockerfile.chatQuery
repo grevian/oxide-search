@@ -1,0 +1,8 @@
+FROM public.ecr.aws/docker/library/golang:1.21 as build-image
+WORKDIR /src
+COPY . ./
+RUN CGO_ENABLED=0 go build -o lambda-handler ./sam-app/chatQuery/...
+
+FROM public.ecr.aws/lambda/provided:al2
+COPY --from=build-image /src/lambda-handler ./lambda-handler
+ENTRYPOINT ./lambda-handler

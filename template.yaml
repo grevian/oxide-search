@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  oxide-search
+
+  Simple app to do a GPT4 based RAG with transcribed oxide & friends content
+
+Parameters:
+  MasterUsername:
+    Type: String
+    Description: Master usernames must be between 1 and 16 characters.
+  MasterPassword:
+    Type: String
+    Description: Master password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character.
+    NoEcho: true
+  OpenAIAPIKey:
+    Type: String
+    Description: API Key for use with OpenAI
+    NoEcho: true
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 50
+    MemorySize: 128
+    Tracing: Active
+  Api:
+    TracingEnabled: true
+Resources:
+  SearchKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Enabled: true
+  MySecretMasterUsername:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: os-username
+      Description: Master username for Amazon Opensearch cluster
+      SecretString: !Ref MasterUsername
+  MySecretMasterPassword:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: os-password
+      Description: Master password for Amazon Opensearch cluster
+      SecretString: !Ref MasterPassword
+  MyOpenAIAPIKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: openai-api-key
+      Description: Master username for Amazon Opensearch cluster
+      SecretString: !Ref OpenAIAPIKey
+  VectorEmbeddingDatabase:
+    Type: AWS::OpenSearchService::Domain
+    Properties:
+      EngineVersion: 'OpenSearch_2.9'
+      ClusterConfig:
+        DedicatedMasterEnabled: false
+        InstanceCount: 1
+        InstanceType: 't3.small.search'
+      DomainEndpointOptions:
+        EnforceHTTPS: true
+      EBSOptions:
+        EBSEnabled: true
+        Iops: '3000'
+        Throughput: '125'
+        VolumeSize: '20'
+        VolumeType: 'gp3'
+      NodeToNodeEncryptionOptions:
+        Enabled: true
+      EncryptionAtRestOptions:
+        Enabled: true
+        KmsKeyId: !Ref SearchKMSKey
+      AdvancedSecurityOptions:
+        Enabled: true
+        InternalUserDatabaseEnabled: true
+        MasterUserOptions:
+          MasterUserName: !Ref MasterUsername
+          MasterUserPassword: !Ref MasterPassword
+    UpdatePolicy:
+      EnableVersionUpgrade: true
+
+  ChatCompletionFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      PackageType: Image
+      Architectures:
+      - x86_64
+      Events:
+        CatchAll:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /chatQuery
+            Method: POST
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          OPENAI_API_KEY: VALUE
+          OPENSEARCH_HOST: !GetAtt VectorEmbeddingDatabase.DomainEndpoint
+      Policies:
+        - AmazonOpenSearchServiceFullAccess
+        - SecretsManagerReadWrite
+    Metadata:
+      DockerTag: provided.al2-v1
+      DockerContext: ./
+      Dockerfile: Dockerfile.chatQuery
+  ApplicationResourceGroup:
+    Type: AWS::ResourceGroups::Group
+    Properties:
+      Name:
+        Fn::Sub: ApplicationInsights-SAM-${AWS::StackName}
+      ResourceQuery:
+        Type: CLOUDFORMATION_STACK_1_0
+  ApplicationInsightsMonitoring:
+    Type: AWS::ApplicationInsights::Application
+    Properties:
+      ResourceGroupName:
+        Ref: ApplicationResourceGroup
+      AutoConfigurationEnabled: 'true'
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  ChatCompletionAPI:
+    Description: API Gateway endpoint URL for Prod environment for First Function
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/chatQuery/"
+  ChatCompletionFunction:
+    Description: First Lambda Function ARN
+    Value: !GetAtt ChatCompletionFunction.Arn
+  ChatCompletionFunctionIamRole:
+    Description: Implicit IAM Role created for the ChatCompletion function
+    Value: !GetAtt ChatCompletionFunctionRole.Arn

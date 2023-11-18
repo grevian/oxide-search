@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/opensearch-project/opensearch-go"
-	"github.com/opensearch-project/opensearch-go/opensearchapi"
+	"github.com/opensearch-project/opensearch-go/v2"
+	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
 	"oxide-search/manifest"
 )
